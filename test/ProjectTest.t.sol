@@ -77,6 +77,7 @@ contract ProjectTest is Test {
 
   function test__BorrowAndRepaymentLifecycle() public createVault {
     LoanVault _loanVault = projectContract.getLoanVault(lender, address(lendingAsset));
+
     uint256 _liquidityAmount = 1000;
     uint256 _amount = 100;
     uint256 _amountCollateral = _loanVault.getTotalCollateralForLoan(_amount);
@@ -161,6 +162,20 @@ contract ProjectTest is Test {
     console2.log("===========================================================");
 
     vm.stopPrank();
+
+    // Test Withdraw and RemoveLiquidity
+    vm.startPrank(lender);
+
+    uint256 vaultLendingBalance = _loanVault.getLendingAssetBalance();
+    uint256 lenderAmountBefore = lendingAsset.balanceOf(lender);
+
+  _loanVault.removeLiquidityLending(vaultLendingBalance);
+
+    vm.stopPrank();
+
+    assertEq(lendingAsset.balanceOf(lender), lenderAmountBefore + vaultLendingBalance);
+    assertEq(_loanVault.getLendingAssetBalance(), 0);
+    assertEq(_loanVault.getCollateralAssetBalance(), 0);
   }
 
   function test__UpdateVaultDetails() public createVault {
