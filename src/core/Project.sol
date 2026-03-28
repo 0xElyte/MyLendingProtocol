@@ -8,28 +8,30 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract Project is Ownable(msg.sender) {
   mapping(address lender => Structs.Lender lenderDetails) private lendersDetail;
+  LoanVault[] private allVaults;
 
   modifier onlyLender() {
-    if (!_isLender(msg.sender)) revert Errors.Project__NotALender();
+    _onlyLender();
     _;
   }
 
   function registerAsLender() public {
     if (_isLender(msg.sender)) revert Errors.Project__IsAlreadyALender();
 
-    Structs.Lender memory lender;
-    lender.lenderAddress = msg.sender;
-    lender.joinedAt = block.timestamp;
-
-    lendersDetail[msg.sender] = lender;
-  }
-
-  function createLoanVault(IERC20 _lendingAsset, IERC20 _collateralAsset, uint256 _collateralRate, uint256 _duration) external onlyLender {
     Structs.Lender storage lender = lendersDetail[msg.sender];
 
-    LoanVault loanVault = new LoanVault(_lendingAsset, _collateralAsset, _collateralRate, _duration);
+    lender.lenderAddress = msg.sender;
+    lender.joinedAt = block.timestamp;
+  }
 
-    lender.loanVaults.push(loanVault);
+  function createLoanVault(address _lendingAsset, address _collateralAsset, uint256 _collateralRate, uint256 _interestRate, uint256 _penaltyRatePerDay,  uint256 _duration) external onlyLender {
+    Structs.Lender storage lender = lendersDetail[msg.sender];
+
+    LoanVault loanVault = new LoanVault(msg.sender, IERC20(_lendingAsset), IERC20(_collateralAsset), _collateralRate, _interestRate, _penaltyRatePerDay, _duration);
+
+    lender.loanVaults[_lendingAsset] = loanVault;
+
+    allVaults.push(loanVault);
   }
 
   function _isLender(address lender) private view returns (bool) {
@@ -38,5 +40,28 @@ contract Project is Ownable(msg.sender) {
 
   function isLender(address lender) external view returns (bool) {
     return _isLender(lender);
+  }
+
+  function _onlyLender() private view {
+    if (!_isLender(msg.sender)) revert Errors.Project__NotALender();
+  }
+
+  function getLenderDetails(address _lender) external view returns (address, uint256) {
+    Structs.Lender storage lender = lendersDetail[_lender];
+
+    return (lender.lenderAddress, lender.joinedAt);
+  }
+
+  function getLoanVault(address _lender, address debtAsset) external view returns (LoanVault) {
+    Structs.Lender storage lenderDetails = lendersDetail[_lender];
+    return lenderDetails.loanVaults[debtAsset];
+  }
+
+  function getAllVaults() external view returns (LoanVault[] memory) {
+    return allVaults;
+  }
+
+  function getVaultsCount() external view returns (uint256) {
+    return allVaults.length;
   }
 }

@@ -7,16 +7,20 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract LoanVault is Ownable{
-  IERC20 lendingAsset;
-  IERC20 collateralAsset;
-  uint256 collateralRate; // On a scale of 1 - 100; therefore, 100 means 100%
-  uint256 duration;
+  IERC20 private lendingAsset;
+  IERC20 private collateralAsset;
+  uint256 private collateralRate; // On a scale of 1 - 100; therefore, 100 means 100%
+  uint256 private interestRate; // On a scale of 1 - 100; therefore, 100 means 100%
+  uint256 private penaltyRatePerDay; // On a scale of 1 - 100; therefore, 100 means 100%
+  uint256 private duration;
   mapping(address borrower => Structs.Borrower) private borrowers;
 
-  constructor(IERC20 _lendingAsset, IERC20 _collateralAsset, uint256 _collateralRate, uint256 _duration) Ownable(msg.sender) {
+  constructor(address _owner, IERC20 _lendingAsset, IERC20 _collateralAsset, uint256 _collateralRate, uint256 _interestRate, uint256 _penaltyRatePerDay, uint256 _duration) Ownable(_owner) {
     lendingAsset = _lendingAsset;
     collateralAsset = _collateralAsset;
     collateralRate = _collateralRate;
+    interestRate = _interestRate;
+    penaltyRatePerDay = _penaltyRatePerDay;
     duration = _duration;
   }
 
@@ -41,31 +45,109 @@ contract LoanVault is Ownable{
     require(collateralAsset.transfer(msg.sender, _amount));
   }
 
-  function borrow(uint256 _amount) external {
-    Structs.Borrower storage borrower = borrowers[msg.sender];
-    if (_isBorrower(msg.sender)) revert Errors.LoanVault__HasOutstandingLoan(borrower.amountBorrowed);
+  function borrow(uint256 _amount) external returns (bool) {
+    if (_isBorrower(msg.sender)) revert Errors.LoanVault__HasOutstandingLoan(borrowers[msg.sender].amountBorrowed);
 
-    if (borrower.borrowerAddress == address(0)) revert Errors.LoanVault__ZeroAddress();
+    if (msg.sender == address(0)) revert Errors.LoanVault__ZeroAddress();
     if (_amount == 0) revert Errors.LoanVault__ZeroAmount();
     if (lendingAsset.balanceOf(address(this)) < _amount) revert Errors.LoanVault__InsufficientLoanVaultBalance();
     
     uint256 collateralAmount = _getTotalCollateralForLoan(_amount);
-    if (collateralAsset.balanceOf(borrower.borrowerAddress)  < collateralAmount) revert Errors.LoanVault__InsufficientBorrowerCollateralBalance();
+    if (collateralAsset.balanceOf(msg.sender)  < collateralAmount) revert Errors.LoanVault__InsufficientBorrowerCollateralBalance();
 
+    Structs.Borrower storage borrower = borrowers[msg.sender];
+
+    borrower.borrowedAt = block.timestamp;
+    borrower.dueTime = block.timestamp + duration;
+    borrower.borrowerAddress = msg.sender;
     borrower.lenderAddress = owner();
     borrower.loanAsset = lendingAsset;
     borrower.debtAsset = collateralAsset;
     borrower.amountBorrowed = _amount;
     borrower.amountColateralDropped = collateralAmount;
-    borrower.dueTime = block.timestamp + duration;
+    borrower.amountToRepay = _amount + _calculateInterest(_amount);
 
-    bool success = collateralAsset.transferFrom(borrower.borrowerAddress, address(this), collateralAmount);
+    bool success = collateralAsset.transferFrom(msg.sender,  address(this), collateralAmount);
 
     require(success);
 
     require(lendingAsset.transfer(borrower.borrowerAddress, _amount));
+    
+    return true;
   }
 
+  function repay(uint256 _amount) external returns (bool) {
+    if (!_isBorrower(msg.sender)) revert Errors.LoanVault__NoOutstandingLoan();
+    if (_amount == 0) revert Errors.LoanVault__ZeroAmount();
+
+    Structs.Borrower storage borrower = borrowers[msg.sender];
+    uint256 _amountToRepay = borrower.amountToRepay;
+
+    if (block.timestamp > borrower.dueTime) {
+      uint256 _overdueTime = block.timestamp - borrower.dueTime;
+      
+      borrower.penaltyFeeAccrued = _calculatePenalty(_amountToRepay, _overdueTime);
+    }
+
+    uint256 _netAmountToRepay = borrower.amountToRepay + borrower.penaltyFeeAccrued;
+    borrower.amountToRepay = _netAmountToRepay;
+    
+    uint256 amountRepayingNow;
+
+    if (_amount > _netAmountToRepay) {
+      amountRepayingNow = _amount - _netAmountToRepay;
+    }
+    else {
+      amountRepayingNow = _amount;
+    }
+
+    (bool success ) = lendingAsset.transferFrom(msg.sender, address(this), amountRepayingNow);
+
+    require (success);
+
+    borrower.amountToRepay -= amountRepayingNow;
+
+    if (borrower.amountToRepay == 0) {
+      (bool collateralTransferSuccess) = collateralAsset.transfer(msg.sender, borrower.amountColateralDropped);
+
+      require(collateralTransferSuccess);
+
+      borrower.lenderAddress = address(0);
+      borrower.loanAsset = IERC20(address(0));
+      borrower.debtAsset = IERC20(address(0));
+      borrower.amountBorrowed = 0;
+      borrower.amountToRepay = 0;
+      borrower.penaltyFeeAccrued = 0;
+      borrower.amountColateralDropped = 0;
+      borrower.borrowedAt = 0;
+      borrower.dueTime = 0;
+    }
+  }
+
+  function _calculateInterest(uint256 _amountBorrowed) private view returns (uint256) {
+     return (_amountBorrowed * interestRate) / 100;
+  }
+
+  function _calculatePenalty(uint256 _amountToRepay, uint256 _overdueTime) private view returns (uint256) {
+    // ToDo: Revisit This!!!
+    int256 penaltyFeePerDay = (int256(_amountToRepay) * int256(penaltyRatePerDay)) / 100;
+    int256 timePassedToDays = int256(_overdueTime) / 1 days;
+    
+    return uint256(penaltyFeePerDay * timePassedToDays);
+  }
+
+  function getBorrower(address _borrower) external returns (Structs.Borrower memory) {
+    Structs.Borrower storage borrower = borrowers[_borrower];
+
+     if (block.timestamp > borrower.dueTime) {
+      uint256 _overdueTime = block.timestamp - borrower.dueTime;
+      
+      borrower.penaltyFeeAccrued = _calculatePenalty(borrower.amountToRepay, _overdueTime);
+    }
+
+    return borrower;
+  }
+  
   function _getTotalCollateralForLoan(uint256 _loanAmount) private view returns (uint256) {
     return _loanAmount +  _getCollateralAmountForLoan(_loanAmount);
   }
@@ -91,12 +173,8 @@ contract LoanVault is Ownable{
     return lendingAsset.balanceOf(address(this));
   }
 
-  function _getCollateralAssetBalance() private view returns (uint256) {
-    return collateralAsset.balanceOf(address(this));
-  }
-
   function getCollateralAssetBalance() external view returns (uint256) {
-    return _getCollateralAssetBalance();
+    return collateralAsset.balanceOf(address(this));
   }
 
   function _isBorrower(address _borrower) private view returns (bool) {
@@ -105,6 +183,14 @@ contract LoanVault is Ownable{
   
   function isBorrower(address _borrower) external view returns (bool) {
     return _isBorrower(_borrower);
+  }
+
+  function getCollateralRate() external view returns (uint256) {
+    return collateralRate;
+  }
+  
+  function getDuration() external view returns (uint256) {
+    return duration;
   }
 
   function getVaultAddress() external view returns (address) {

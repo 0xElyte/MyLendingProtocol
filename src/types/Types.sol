@@ -8,7 +8,7 @@ library Structs {
   struct Lender {
     address lenderAddress;
     uint256 joinedAt;
-    LoanVault[] loanVaults;
+    mapping(address lendingAsset => LoanVault vault) loanVaults;
   }
 
   struct Borrower {
@@ -17,7 +17,10 @@ library Structs {
     IERC20 loanAsset; // collateral asset
     IERC20 debtAsset; // asset borrowed
     uint256 amountBorrowed;
+    uint256 amountToRepay;
+    uint256 penaltyFeeAccrued;
     uint256 amountColateralDropped;
+    uint256 borrowedAt;
     uint256 dueTime;
   }
 }
@@ -33,4 +36,5 @@ library Errors {
   error LoanVault__InsufficientLoanVaultBalance();
   error LoanVault__InsufficientBorrowerCollateralBalance();
   error LoanVault__HasOutstandingLoan(uint256 amount);
+  error LoanVault__NoOutstandingLoan();
 }
