@@ -7,6 +7,9 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract Project is Ownable(msg.sender) {
+  uint256 private protocolFee = 1; // 3% of Lenders'withdrawals/liquidation amounts
+  uint256 private minimumInitialDeposit = 100;
+
   mapping(address lender => Structs.Lender lenderDetails) private lendersDetail;
   LoanVault[] private allVaults;
 
@@ -24,10 +27,14 @@ contract Project is Ownable(msg.sender) {
     lender.joinedAt = block.timestamp;
   }
 
-  function createLoanVault(address _lendingAsset, address _collateralAsset, uint256 _collateralRate, uint256 _interestRate, uint256 _penaltyRatePerDay,  uint256 _duration) external onlyLender {
-    Structs.Lender storage lender = lendersDetail[msg.sender];
+  function createLoanVault(address _lendingAsset, uint256 _amount, address _collateralAsset, uint256 _collateralRate, uint256 _interestRate, uint256 _penaltyRatePerDay,  uint256 _duration) external onlyLender {
+    if (_amount < minimumInitialDeposit) revert Errors.Project__InvalidInitialDeposit();
+    require(IERC20(_lendingAsset).transferFrom(msg.sender, address(this), _amount));
 
     LoanVault loanVault = new LoanVault(msg.sender, IERC20(_lendingAsset), IERC20(_collateralAsset), _collateralRate, _interestRate, _penaltyRatePerDay, _duration);
+    require(IERC20(_lendingAsset).transfer(address(loanVault), _amount));
+
+    Structs.Lender storage lender = lendersDetail[msg.sender];
 
     lender.loanVaults[_lendingAsset] = loanVault;
 
@@ -44,6 +51,14 @@ contract Project is Ownable(msg.sender) {
 
   function _onlyLender() private view {
     if (!_isLender(msg.sender)) revert Errors.Project__NotALender();
+  }
+
+  function updateProtocolFee(uint256 _fee) external onlyOwner {
+    protocolFee = _fee;
+  }
+
+  function withdraw(address tokenAddress, uint256 amount) external onlyOwner {
+    IERC20(tokenAddress).transfer(owner(), amount);
   }
 
   function getLenderDetails(address _lender) external view returns (address, uint256) {

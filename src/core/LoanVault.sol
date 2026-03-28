@@ -4,9 +4,10 @@ pragma solidity ^0.8.2;
 import { Structs, Errors } from "../types/Types.sol";
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
-contract LoanVault is Ownable{
+contract LoanVault is Ownable, ReentrancyGuard {
   IERC20 private lendingAsset;
   IERC20 private collateralAsset;
   uint256 private collateralRate; // On a scale of 1 - 100; therefore, 100 means 100%
@@ -30,14 +31,14 @@ contract LoanVault is Ownable{
     require(lendingAsset.transferFrom(msg.sender, address(this), _amount));
   }
 
-  function removeLiquidityLending(uint256 _amount) external onlyOwner {
+  function removeLiquidityLending(uint256 _amount) external onlyOwner nonReentrant {
     if (_amount == 0) revert Errors.LoanVault__ZeroAmount();
 
   // ToDo: Collect Protocol Fee
     require(lendingAsset.transfer(msg.sender, _amount));
   }
   
-  function withdrawCollateral(uint256 _amount) external onlyOwner {
+  function withdrawCollateral(uint256 _amount) external onlyOwner nonReentrant {
     if (_amount == 0) revert Errors.LoanVault__ZeroAmount();
 
     // ToDo: Collect Protocol Fee
@@ -45,11 +46,11 @@ contract LoanVault is Ownable{
     require(collateralAsset.transfer(msg.sender, _amount));
   }
 
-  function borrow(uint256 _amount) external returns (bool) {
-    if (_isBorrower(msg.sender)) revert Errors.LoanVault__HasOutstandingLoan(borrowers[msg.sender].amountBorrowed);
-
+  function borrow(uint256 _amount) external nonReentrant returns (bool) {
     if (msg.sender == address(0)) revert Errors.LoanVault__ZeroAddress();
     if (_amount == 0) revert Errors.LoanVault__ZeroAmount();
+
+    if (_isBorrower(msg.sender)) revert Errors.LoanVault__HasOutstandingLoan(borrowers[msg.sender].amountBorrowed);
     if (lendingAsset.balanceOf(address(this)) < _amount) revert Errors.LoanVault__InsufficientLoanVaultBalance();
     
     uint256 collateralAmount = _getTotalCollateralForLoan(_amount);
@@ -76,7 +77,7 @@ contract LoanVault is Ownable{
     return true;
   }
 
-  function repay(uint256 _amount) external returns (bool) {
+  function repay(uint256 _amount) external nonReentrant returns (bool) {
     if (!_isBorrower(msg.sender)) revert Errors.LoanVault__NoOutstandingLoan();
     if (_amount == 0) revert Errors.LoanVault__ZeroAmount();
 
@@ -147,7 +148,6 @@ contract LoanVault is Ownable{
   }
 
   function _calculatePenalty(uint256 _amountToRepay, uint256 _overdueTime) private view returns (uint256) {
-    // ToDo: Revisit This!!!
     int256 penaltyFeePerDay = (int256(_amountToRepay) * int256(penaltyRatePerDay)) / 100;
     int256 timePassedToDays = int256(_overdueTime) / 1 days;
     

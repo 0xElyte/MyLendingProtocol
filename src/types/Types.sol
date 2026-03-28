@@ -29,6 +29,7 @@ library Errors {
   // Project Errors
   error Project__IsAlreadyALender();
   error Project__NotALender();
+  error Project__InvalidInitialDeposit();
 
   // Loan Vault Errors
   error LoanVault__ZeroAmount();

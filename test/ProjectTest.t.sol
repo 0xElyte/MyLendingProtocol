@@ -17,6 +17,7 @@ contract ProjectTest is Test {
   MockERC20 lendingAsset;
   MockERC20 collateralAsset;
   
+  uint256 initialDeposit = 200;
   uint256 collateralRate = 10;
   uint256 duration = 1 hours;
   uint256 _interestRate = 5;
@@ -37,7 +38,10 @@ contract ProjectTest is Test {
     projectContract.registerAsLender();
     assertTrue(projectContract.isLender(lender));
 
-    projectContract.createLoanVault(address(lendingAsset), address(collateralAsset), collateralRate, _interestRate, _penaltyRatePerDay, duration);
+    lendingAsset.mint(initialDeposit);
+    lendingAsset.approve(address(projectContract), initialDeposit);
+
+    projectContract.createLoanVault(address(lendingAsset), initialDeposit, address(collateralAsset), collateralRate, _interestRate, _penaltyRatePerDay, duration);
     
     (address lenderAddress, ) = projectContract.getLenderDetails(lender);
     assertEq(lenderAddress, lender);
@@ -63,10 +67,12 @@ contract ProjectTest is Test {
   }
 
   function test__CreateLoanVault() public createVault {
+    uint256 _initialDeposit = 100;
+
     // Cannot create Vault when not registered as a Lender
     vm.prank(borrower);
   vm.expectRevert(Errors.Project__NotALender.selector);
-    projectContract.createLoanVault(address(lendingAsset), address(collateralAsset), collateralRate, _interestRate, _penaltyRatePerDay, duration);
+    projectContract.createLoanVault(address(lendingAsset), _initialDeposit, address(collateralAsset), collateralRate, _interestRate, _penaltyRatePerDay, duration);
   }
 
   function test__BorrowAndRepaymentLifecycle() public createVault {
@@ -74,13 +80,8 @@ contract ProjectTest is Test {
     uint256 _liquidityAmount = 1000;
     uint256 _amount = 100;
     uint256 _amountCollateral = _loanVault.getTotalCollateralForLoan(_amount);
-    
-    // Vault Exists but has insufficient debtAsset amount
-    vm.prank(borrower);
-    vm.expectRevert(Errors.LoanVault__InsufficientLoanVaultBalance.selector);
-    _loanVault.borrow(_amount);
 
-  // Vault has asset but borrowe has insufficient collateralAsset amount
+  // Vault has asset but borrower has insufficient collateralAsset amount
     vm.startPrank(lender);
 
     lendingAsset.mint(_liquidityAmount);
@@ -101,12 +102,15 @@ contract ProjectTest is Test {
     _loanVault.borrow(_amountCollateral); // more than balance + collateral
 
     // Successfully Borrows
+    uint256 vaultLendingBalanceBefore = _loanVault.getLendingAssetBalance();
+    uint256 vaultCollateralBalanceBefore = _loanVault.getCollateralAssetBalance();
+
     _loanVault.borrow(_amount);
 
     vm.stopPrank();
 
-    assertEq(_loanVault.getCollateralAssetBalance(), _amountCollateral);
-    assertEq(_loanVault.getLendingAssetBalance(), _liquidityAmount - _amount);
+    assertEq(_loanVault.getCollateralAssetBalance(), vaultCollateralBalanceBefore + _amountCollateral);
+    assertEq(_loanVault.getLendingAssetBalance(), vaultLendingBalanceBefore - _amount);
     assertEq(lendingAsset.balanceOf(borrower), _amount);
 
     uint256 _borrowedAt = _loanVault.getBorrower(borrower).borrowedAt;
