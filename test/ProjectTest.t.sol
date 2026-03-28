@@ -69,7 +69,7 @@ contract ProjectTest is Test {
     projectContract.createLoanVault(address(lendingAsset), address(collateralAsset), collateralRate, _interestRate, _penaltyRatePerDay, duration);
   }
 
-  function test__Borrow() public createVault {
+  function test__BorrowAndRepaymentLifecycle() public createVault {
     LoanVault _loanVault = projectContract.getLoanVault(lender, address(lendingAsset));
     uint256 _liquidityAmount = 1000;
     uint256 _amount = 100;
@@ -157,6 +157,35 @@ contract ProjectTest is Test {
     console2.log("===========================================================");
 
     vm.stopPrank();
+  }
+
+  function test__UpdateVaultDetails() public createVault {
+    LoanVault loanVault = projectContract.getLoanVault(lender, address(lendingAsset));
+
+  // Unauthorized cannot update
+    vm.prank(borrower);
+    vm.expectRevert();
+    loanVault.editDuration(1);
+
+    // Successfully Edits by Authorized
+    uint256 newCollateralRate = 20;
+    uint256 newInterestRate = 10;
+    uint256 newPenaltyRatePerDay = 5;
+    uint256 newDuration = 1 days;
+    
+    vm.startPrank(lender);
+
+    loanVault.editCollateralRate(newCollateralRate);
+    loanVault.editInterestRate(newInterestRate);
+    loanVault.editPenaltyRatePerDay(newPenaltyRatePerDay);
+    loanVault.editDuration(newDuration);
+
+    vm.stopPrank();
+
+    assertEq(loanVault.getCollateralRate(), newCollateralRate);
+    assertEq(loanVault.getInterestRate(), newInterestRate);
+    assertEq(loanVault.getPenaltyRatePerDay(), newPenaltyRatePerDay);
+    assertEq(loanVault.getDuration(), newDuration);
   }
 }
 

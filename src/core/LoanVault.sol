@@ -122,6 +122,24 @@ contract LoanVault is Ownable{
       borrower.borrowedAt = 0;
       borrower.dueTime = 0;
     }
+
+    return true;
+  }
+
+  function editCollateralRate(uint256 _newRate) external onlyOwner {
+    collateralRate = _newRate;
+  }
+
+  function editInterestRate(uint256 _newRate) external onlyOwner {
+    interestRate = _newRate;
+  }
+
+  function editPenaltyRatePerDay(uint256 _newRate) external onlyOwner {
+    penaltyRatePerDay = _newRate;
+  }
+
+  function editDuration(uint256 _newDuration) external onlyOwner {
+    duration = _newDuration;
   }
 
   function _calculateInterest(uint256 _amountBorrowed) private view returns (uint256) {
@@ -191,6 +209,14 @@ contract LoanVault is Ownable{
   
   function getDuration() external view returns (uint256) {
     return duration;
+  }
+  
+  function getInterestRate() external view returns (uint256) {
+    return interestRate;
+  }
+  
+  function getPenaltyRatePerDay() external view returns (uint256) {
+    return penaltyRatePerDay;
   }
 
   function getVaultAddress() external view returns (address) {
