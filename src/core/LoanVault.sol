@@ -36,7 +36,7 @@ contract LoanVault is Ownable, ReentrancyGuard {
   function removeLiquidityLending(uint256 _amount) external onlyOwner nonReentrant {
     if (_amount == 0) revert Errors.LoanVault__ZeroAmount();
 
-    uint256 protocolAmount = (_amount * iProject.getProtocolFee()) / (100 * 10 ** iProject.PROTOCOL_FEE_DECIMAL_POINT());
+    uint256 protocolAmount =iProject.getProtocolAmountForLiquidation(_amount);
     
     require(lendingAsset.transfer(address(iProject), protocolAmount));
 

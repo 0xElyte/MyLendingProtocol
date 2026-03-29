@@ -89,4 +89,8 @@ contract Project is Ownable(msg.sender) {
   function getProtocolFee() external view returns (uint256) {
     return protocolFee;
   }
+
+  function getProtocolAmountForLiquidation(uint256 _amount) public view returns (uint256) {
+    return (_amount * protocolFee) / (100 * 10 ** PROTOCOL_FEE_DECIMAL_POINT);
+  }
 }
