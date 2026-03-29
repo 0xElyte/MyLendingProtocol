@@ -2,12 +2,13 @@
 pragma solidity ^0.8.2;
 
 import { Structs, Errors } from "../types/Types.sol";
-
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { Project } from "./Project.sol";
 
 contract LoanVault is Ownable, ReentrancyGuard {
+  Project immutable iProject;
   IERC20 private lendingAsset;
   IERC20 private collateralAsset;
   uint256 private collateralRate; // On a scale of 1 - 100; therefore, 100 means 100%
@@ -16,7 +17,8 @@ contract LoanVault is Ownable, ReentrancyGuard {
   uint256 private duration;
   mapping(address borrower => Structs.Borrower) private borrowers;
 
-  constructor(address _owner, IERC20 _lendingAsset, IERC20 _collateralAsset, uint256 _collateralRate, uint256 _interestRate, uint256 _penaltyRatePerDay, uint256 _duration) Ownable(_owner) {
+  constructor(address _iProject, address _owner, IERC20 _lendingAsset, IERC20 _collateralAsset, uint256 _collateralRate, uint256 _interestRate, uint256 _penaltyRatePerDay, uint256 _duration) Ownable(_owner) {
+    iProject = Project(_iProject);
     lendingAsset = _lendingAsset;
     collateralAsset = _collateralAsset;
     collateralRate = _collateralRate;
@@ -34,14 +36,18 @@ contract LoanVault is Ownable, ReentrancyGuard {
   function removeLiquidityLending(uint256 _amount) external onlyOwner nonReentrant {
     if (_amount == 0) revert Errors.LoanVault__ZeroAmount();
 
-  // ToDo: Collect Protocol Fee
-    require(lendingAsset.transfer(msg.sender, _amount));
+    uint256 protocolAmount = (_amount * iProject.getProtocolFee()) / (100 * 10 ** iProject.PROTOCOL_FEE_DECIMAL_POINT());
+    
+    require(lendingAsset.transfer(address(iProject), protocolAmount));
+
+    require(lendingAsset.transfer(msg.sender, _amount - protocolAmount));
   }
   
   function withdrawCollateral(uint256 _amount) external onlyOwner nonReentrant {
     if (_amount == 0) revert Errors.LoanVault__ZeroAmount();
 
-    // ToDo: Collect Protocol Fee
+    uint256 protocolAmount =  (_amount * iProject.getProtocolFee()) / (100 * 10 ** iProject.PROTOCOL_FEE_DECIMAL_POINT());
+    require(collateralAsset.transfer(address(iProject), protocolAmount));
 
     require(collateralAsset.transfer(msg.sender, _amount));
   }

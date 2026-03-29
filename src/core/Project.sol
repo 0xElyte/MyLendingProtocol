@@ -7,7 +7,9 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract Project is Ownable(msg.sender) {
-  uint256 private protocolFee = 1; // 3% of Lenders'withdrawals/liquidation amounts
+  uint256 public constant PROTOCOL_FEE_DECIMAL_POINT = 2; // 2 decimal places
+  uint256 private protocolFee = 50; // 0.50% of Lenders'withdrawals/liquidation amounts || Setting ordinary 5 === 0.05%
+
   uint256 private minimumInitialDeposit = 100;
 
   mapping(address lender => Structs.Lender lenderDetails) private lendersDetail;
@@ -31,7 +33,7 @@ contract Project is Ownable(msg.sender) {
     if (_amount < minimumInitialDeposit) revert Errors.Project__InvalidInitialDeposit();
     require(IERC20(_lendingAsset).transferFrom(msg.sender, address(this), _amount));
 
-    LoanVault loanVault = new LoanVault(msg.sender, IERC20(_lendingAsset), IERC20(_collateralAsset), _collateralRate, _interestRate, _penaltyRatePerDay, _duration);
+    LoanVault loanVault = new LoanVault(address(this), msg.sender, IERC20(_lendingAsset), IERC20(_collateralAsset), _collateralRate, _interestRate, _penaltyRatePerDay, _duration);
     require(IERC20(_lendingAsset).transfer(address(loanVault), _amount));
 
     Structs.Lender storage lender = lendersDetail[msg.sender];
@@ -61,6 +63,10 @@ contract Project is Ownable(msg.sender) {
     IERC20(tokenAddress).transfer(owner(), amount);
   }
 
+  function setProtocolFee(uint256 _fee) external onlyOwner {
+    protocolFee = _fee;
+  }
+
   function getLenderDetails(address _lender) external view returns (address, uint256) {
     Structs.Lender storage lender = lendersDetail[_lender];
 
@@ -78,5 +84,9 @@ contract Project is Ownable(msg.sender) {
 
   function getVaultsCount() external view returns (uint256) {
     return allVaults.length;
+  }
+
+  function getProtocolFee() external view returns (uint256) {
+    return protocolFee;
   }
 }

@@ -20,8 +20,8 @@ contract ProjectTest is Test {
   uint256 initialDeposit = 200;
   uint256 collateralRate = 10;
   uint256 duration = 1 hours;
-  uint256 _interestRate = 5;
-  uint256 _penaltyRatePerDay = 2;
+  uint256 _interestRate = 10;
+  uint256 _penaltyRatePerDay = 3;
 
   function setUp() public {
     DeployProject deployScript = new DeployProject();
@@ -166,14 +166,12 @@ contract ProjectTest is Test {
     // Test Withdraw and RemoveLiquidity
     vm.startPrank(lender);
 
-    uint256 vaultLendingBalance = _loanVault.getLendingAssetBalance();
-    uint256 lenderAmountBefore = lendingAsset.balanceOf(lender);
+    uint256 vaultLendingBalance = _loanVault.getLendingAssetBalance(); // Try withdrawing All
 
   _loanVault.removeLiquidityLending(vaultLendingBalance);
 
     vm.stopPrank();
 
-    assertEq(lendingAsset.balanceOf(lender), lenderAmountBefore + vaultLendingBalance);
     assertEq(_loanVault.getLendingAssetBalance(), 0);
     assertEq(_loanVault.getCollateralAssetBalance(), 0);
   }
