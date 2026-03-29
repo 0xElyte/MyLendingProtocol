@@ -42,15 +42,6 @@ contract LoanVault is Ownable, ReentrancyGuard {
 
     require(lendingAsset.transfer(msg.sender, _amount - protocolAmount));
   }
-  
-  function withdrawCollateral(uint256 _amount) external onlyOwner nonReentrant {
-    if (_amount == 0) revert Errors.LoanVault__ZeroAmount();
-
-    uint256 protocolAmount =  (_amount * iProject.getProtocolFee()) / (100 * 10 ** iProject.PROTOCOL_FEE_DECIMAL_POINT());
-    require(collateralAsset.transfer(address(iProject), protocolAmount));
-
-    require(collateralAsset.transfer(msg.sender, _amount));
-  }
 
   function borrow(uint256 _amount) external nonReentrant returns (bool) {
     if (msg.sender == address(0)) revert Errors.LoanVault__ZeroAddress();
