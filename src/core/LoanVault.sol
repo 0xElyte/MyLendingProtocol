@@ -12,7 +12,8 @@ contract LoanVault is Ownable, ReentrancyGuard {
   IERC20 private lendingAsset;
   IERC20 private collateralAsset;
   uint256 private collateralRate; // On a scale of 1 - 100; therefore, 100 means 100%
-  uint256 private interestRate; // On a scale of 1 - 100; therefore, 100 means 100%
+  uint256 private constant INTEREST_RATE_DECIMAL_POINT = 20; // 0.20% of Lenders'withdrawals/liquidation amounts || Setting ordinary 2 === 0.02%
+  uint256 private interestRate; // (amount * interest) / (100 * 10 ** interestRateDecimalPoint);
   uint256 private penaltyRatePerDay; // On a scale of 1 - 100; therefore, 100 means 100%
   uint256 private duration;
   mapping(address borrower => Structs.Borrower) private borrowers;
@@ -141,7 +142,7 @@ contract LoanVault is Ownable, ReentrancyGuard {
   }
 
   function _calculateInterest(uint256 _amountBorrowed) private view returns (uint256) {
-     return (_amountBorrowed * interestRate) / 100;
+     return (_amountBorrowed * interestRate) / (100 * 10 ** INTEREST_RATE_DECIMAL_POINT);
   }
 
   function _calculatePenalty(uint256 _amountToRepay, uint256 _overdueTime) private view returns (uint256) {
